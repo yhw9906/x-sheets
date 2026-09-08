@@ -161,6 +161,21 @@
     });
     bar.appendChild(media);
 
+    // 프로모션(광고) 게시물
+    const promoted = U.el('select', 'xs-select');
+    [['show', '프로모션 그대로'], ['gray', '프로모션 회색 처리'], ['hide', '프로모션 제외']].forEach(function (p) {
+      const o = U.el('option', null, p[1]);
+      o.value = p[0];
+      promoted.appendChild(o);
+    });
+    promoted.value = XS.settings.promoted;
+    promoted.title = '프로모션(광고) 게시물 처리 방식';
+    promoted.addEventListener('change', function () {
+      XS.saveSettings({ promoted: promoted.value });
+      XS.grid.rebuild();
+    });
+    bar.appendChild(promoted);
+
     bar.appendChild(U.el('span', 'xs-sep'));
 
     bar.appendChild(textButton('정렬 해제', function () { XS.grid.clearSort(); }));

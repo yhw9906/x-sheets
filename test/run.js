@@ -7,14 +7,23 @@ const { JSDOM } = require('jsdom');
 
 const EXT = path.join(__dirname, '..');
 
-function tweet(i) {
+function tweet(i, opts) {
+  opts = opts || {};
+  const socialLine = opts.promoted
+    ? '<div data-testid="socialContext">프로모션</div>'
+    : '';
+  const lockIcon = opts.protected
+    ? '<svg aria-label="비공개 계정"></svg>'
+    : '';
   return `
   <article data-testid="tweet">
     <div data-testid="Tweet-User-Avatar"><img src="https://pbs.example/av${i}.jpg"></div>
     <div data-testid="User-Name">
       <a role="link" href="/user${i}"><span>사용자 ${i}</span></a>
+      ${lockIcon}
       <a href="/user${i}/status/${1000 + i}"><time datetime="2026-09-0${(i % 8) + 1}T12:3${i % 10}:00.000Z">${i}시간</time></a>
     </div>
+    ${socialLine}
     <div data-testid="tweetText">첫째 줄 ${i}\n둘째 줄 내용입니다.</div>
     <div data-testid="tweetPhoto"><img src="https://pbs.example/p${i}.jpg"></div>
     <div role="group" aria-label="12 답글, 34 리트윗, 56 마음, 7890 조회">
@@ -259,6 +268,57 @@ setTimeout(async () => {
   check('7,890 = 7890', T('7,890') === 7890);
   check('1.2K = 1200', T('1.2K') === 1200);
   check('빈값 = 0', T('') === 0);
+
+  console.log('\n[13] 프로모션 게시물, 비공개 계정 표시');
+  doc.getElementById('react-root').insertAdjacentHTML('beforeend', tweet(900, { promoted: true }));
+  doc.getElementById('react-root').insertAdjacentHTML('beforeend', tweet(901, { protected: true }));
+  const addedFlagged = XS.scraper.collect();
+  check('광고글, 비공개글 추가', addedFlagged === 2, '실제 ' + addedFlagged);
+
+  const promoRow = XS.store.rows.find(function (r) { return r.tweetId === '1900'; });
+  const protRow = XS.store.rows.find(function (r) { return r.tweetId === '1901'; });
+  check('프로모션 감지', !!promoRow && promoRow.promoted === true);
+  check('일반 글은 프로모션 아님', !!targetRow && targetRow.promoted === false);
+  check('비공개 계정 감지', !!protRow && protRow.protected === true);
+
+  XS.saveSettings({ promoted: 'gray' });
+  XS.grid.rebuild();
+  check('회색 처리 클래스가 붙는다', root.querySelectorAll('.xs-rowline .xs-promoted').length > 0);
+
+  XS.saveSettings({ promoted: 'hide' });
+  XS.grid.rebuild();
+  check('제외 모드에서는 화면에서 빠진다', !XS.grid.view.some(function (r) { return r.promoted; }));
+  check('저장소에는 그대로 남아있다', XS.store.rows.some(function (r) { return r.promoted; }));
+
+  XS.saveSettings({ promoted: 'show' });
+  XS.grid.rebuild();
+  check('그대로 보기로 되돌리면 다시 보인다', XS.grid.view.some(function (r) { return r.promoted; }));
+  check('비공개 계정 이름 칸에 표시 클래스', root.querySelectorAll('.xs-protected-cell').length > 0);
+
+  console.log('\n[14] 더 불러오기 - 속도와 개수');
+  Object.defineProperty(doc.body, 'scrollHeight', { value: 200000, configurable: true });
+  window.scrollTo = function (x, y) { window.scrollY = y; };
+  window.scrollY = 0;
+  XS.saveSettings({ batchSize: 10, autoLoad: true });
+
+  const beforePull = XS.store.rows.length;
+  let batch = 0;
+  const feeder = setInterval(function () {
+    batch++;
+    if (batch > 3) { clearInterval(feeder); return; }
+    const frag = Array.from({ length: 5 }, function (_, k) { return tweet(2000 + batch * 10 + k); }).join('');
+    doc.getElementById('react-root').insertAdjacentHTML('beforeend', frag);
+  }, 120);
+
+  const t0 = Date.now();
+  await XS.loader.pull(true);
+  const elapsed = Date.now() - t0;
+  clearInterval(feeder);
+
+  const gainedPull = XS.store.rows.length - beforePull;
+  check('목표 개수(10개) 이상 모았다', gainedPull >= 10, '실제 ' + gainedPull);
+  check('과도하게 다 긁어오지 않고 목표 근처에서 멈췄다', gainedPull < 20, '실제 ' + gainedPull);
+  check('고정 대기 없이 빠르게 끝났다', elapsed < 5000, elapsed + 'ms');
 
   console.log('\n결과: ' + (fails.length === 0 ? '모두 통과' : fails.length + '건 실패 -> ' + fails.join(', ')));
   process.exit(fails.length ? 1 : 0);

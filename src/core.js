@@ -10,7 +10,9 @@
     media: 'hide',      // hide | small  (이미지 표시 방식)
     zoom: 100,          // 75 | 90 | 100 | 125 | 150
     autoLoad: true,     // 아래로 내리면 원본 타임라인을 자동으로 더 읽어옴
-    rowLimit: 3000      // 한 시트에 담아둘 최대 행 수
+    rowLimit: 3000,     // 한 시트에 담아둘 최대 행 수
+    batchSize: 40,      // 더 불러오기 한 번에 목표로 하는 새 글 개수
+    promoted: 'gray'    // show | gray | hide  (프로모션/광고 트윗 처리 방식)
   };
 
   XS.settings = Object.assign({}, XS.DEFAULTS);

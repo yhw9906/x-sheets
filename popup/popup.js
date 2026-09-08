@@ -8,11 +8,13 @@
     media: 'hide',
     zoom: 100,
     autoLoad: true,
-    rowLimit: 3000
+    rowLimit: 3000,
+    batchSize: 40,
+    promoted: 'gray'
   };
 
   const CHECKS = ['enabled', 'wrap', 'autoLoad'];
-  const SELECTS = { media: String, zoom: Number, rowLimit: Number };
+  const SELECTS = { media: String, zoom: Number, rowLimit: Number, batchSize: Number, promoted: String };
 
   chrome.storage.local.get(DEFAULTS, function (v) {
     CHECKS.forEach(function (key) {

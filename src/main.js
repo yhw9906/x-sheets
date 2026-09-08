@@ -18,33 +18,56 @@
 
   let pulling = false;
 
+  // 고정 시간을 기다리지 않고, 새 글이 도착하는 즉시(또는 최대 시간까지) 반응한다.
+  function waitForNewRows(baseline, timeoutMs) {
+    return new Promise(function (resolve) {
+      const start = Date.now();
+      (function poll() {
+        XS.scraper.collect();
+        if (XS.store.rows.length > baseline || Date.now() - start >= timeoutMs) {
+          resolve(XS.store.rows.length - baseline);
+          return;
+        }
+        setTimeout(poll, 80);
+      })();
+    });
+  }
+
   L.pull = async function (manual) {
     if (pulling) return;
     if (!XS.settings.autoLoad && !manual) return;
     pulling = true;
     XS.ui.flash('원본에서 읽는 중');
 
-    try {
-      for (let i = 0; i < 8; i++) {
-        const before = XS.store.rows.length;
-        const y = window.scrollY;
-        window.scrollTo(0, y + window.innerHeight * 0.85);
-        await U.wait(550);
-        XS.scraper.collect();
+    const target = XS.settings.batchSize || 40;
+    const maxSteps = 30;
+    const startCount = XS.store.rows.length;
+    let stagnantSteps = 0;
 
-        if (XS.store.rows.length > before) {
+    try {
+      for (let i = 0; i < maxSteps; i++) {
+        if (XS.store.rows.length - startCount >= target) break;
+
+        const y = window.scrollY;
+        const baseline = XS.store.rows.length;
+
+        window.scrollTo(0, y + window.innerHeight * 1.6);
+        const added = await waitForNewRows(baseline, 700);
+
+        if (added > 0) {
           XS.grid.onNewData();
-          XS.ui.flash('행 ' + XS.store.rows.length + '개');
-          pulling = false;
-          return;
-        }
-        // 더 내려갈 곳이 없으면 그만한다.
-        if (Math.abs(window.scrollY - y) < 4 &&
-            window.innerHeight + window.scrollY >= document.body.scrollHeight - 10) {
-          break;
+          stagnantSteps = 0;
+        } else {
+          stagnantSteps++;
+          // 더 내려갈 곳이 없거나, 여러 번 연속으로 빈손이면 그만한다.
+          const atBottom = Math.abs(window.scrollY - y) < 4 &&
+            window.innerHeight + window.scrollY >= document.body.scrollHeight - 10;
+          if (atBottom || stagnantSteps >= 3) break;
         }
       }
-      XS.ui.flash('더 읽어올 내용이 없습니다');
+
+      const gained = XS.store.rows.length - startCount;
+      XS.ui.flash(gained > 0 ? '행 ' + gained + '개 더 불러왔습니다' : '더 읽어올 내용이 없습니다');
     } finally {
       pulling = false;
     }
@@ -194,7 +217,7 @@
         }
         if (!mounted) return;
         XS.ui.applySettings();
-        if ('media' in patch) XS.grid.rebuild();
+        if ('media' in patch || 'promoted' in patch) XS.grid.rebuild();
       });
     } catch (e) { /* 무시 */ }
   }

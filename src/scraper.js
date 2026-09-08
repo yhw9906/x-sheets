@@ -97,6 +97,26 @@
     };
   }
 
+  // 프로모션(광고) 게시물은 리트윗 표시 자리에 "프로모션"이라는 문구가 대신 뜬다.
+  function isPromoted(article) {
+    if (article.querySelector('[data-testid="promotedIndicator"]')) return true;
+    const social = article.querySelector('[data-testid="socialContext"]');
+    if (social && /프로모션|promoted|광고\s*게시물|^ad$/i.test(U.text(social))) return true;
+    return false;
+  }
+
+  // 비공개(잠금) 계정은 이름 옆에 자물쇠 아이콘이 붙는다.
+  function isProtected(article) {
+    if (article.querySelector('[data-testid="icon-lock"]')) return true;
+    const nameBlock = article.querySelector('[data-testid="User-Name"]') || article;
+    const svgs = nameBlock.querySelectorAll('svg[aria-label]');
+    for (let i = 0; i < svgs.length; i++) {
+      const label = svgs[i].getAttribute('aria-label') || '';
+      if (/protected|비공개/i.test(label)) return true;
+    }
+    return false;
+  }
+
   /* ---------- 게시물 한 건 ---------- */
 
   S.parseTweet = function (article) {
@@ -144,6 +164,8 @@
       view: views(article),
       liked: state.liked,
       retweeted: state.retweeted,
+      promoted: isPromoted(article),
+      protected: isProtected(article),
       media: media.label,
       thumbs: media.thumbs,
       avatar: avatar(article),
@@ -241,6 +263,8 @@
           rel: t.rel,
           liked: t.liked,
           retweeted: t.retweeted,
+          promoted: t.promoted,
+          protected: t.protected,
           media: t.media,
           thumbs: t.thumbs,
           avatar: t.avatar,

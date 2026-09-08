@@ -78,6 +78,10 @@
     const q = G.query.trim().toLowerCase();
     let list = XS.store.rows.slice();
 
+    if (XS.settings.promoted === 'hide') {
+      list = list.filter(function (row) { return !row.promoted; });
+    }
+
     if (q) {
       list = list.filter(function (row) {
         return G.cols.some(function (col) {
@@ -252,8 +256,11 @@
     const line = U.el('div', 'xs-rowline');
     line.dataset.r = String(r);
 
+    const grayed = !!row.promoted && XS.settings.promoted === 'gray';
+
     const head = U.el('div', 'xs-rowhead', String(r + 1));
     head.dataset.r = String(r);
+    if (grayed) head.classList.add('xs-promoted');
     line.appendChild(head);
 
     const list = [];
@@ -264,11 +271,13 @@
       const cell = U.el('div', 'xs-cell');
       cell.dataset.r = String(r);
       cell.dataset.c = String(c);
+      if (grayed) cell.classList.add('xs-promoted');
 
       if (col) {
         if (col.type === 'num') cell.classList.add('xs-right');
         if (col.type === 'time') cell.classList.add('xs-center');
         if (col.type === 'link') cell.classList.add('xs-link');
+        if (col.key === 'name' && row.protected) cell.classList.add('xs-protected-cell');
         fillCell(cell, row, col);
       } else {
         cell.classList.add('xs-empty');

@@ -51,13 +51,17 @@ window.chrome = {
     const b = bodies[i % bodies.length];
     const c = counts[i % counts.length];
     const handle = 'user' + (i + 1);
+    const isPromo = i === 2;      // 세 번째 글은 프로모션으로
+    const isLocked = i === 5;     // 여섯 번째 글은 비공개 계정으로
     html += `
     <article data-testid="tweet">
       <div data-testid="Tweet-User-Avatar"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>
       <div data-testid="User-Name">
         <a role="link" href="/${handle}"><span>${n}</span></a>
+        ${isLocked ? '<svg aria-label="비공개 계정"></svg>' : ''}
         <a href="/${handle}/status/${100000 + i}"><time datetime="2026-09-0${(i % 8) + 1}T0${i % 10}:2${i % 6}:00.000Z">${i + 1}시간</time></a>
       </div>
+      ${isPromo ? '<div data-testid="socialContext">프로모션</div>' : ''}
       <div data-testid="tweetText">${b}</div>
       ${i % 3 === 0 ? '<div data-testid="tweetPhoto"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>' : ''}
       <div role="group">
