@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>X Sheets 미리보기</title>
+<link rel="stylesheet" href="../src/styles.css">
+<style>
+  /* 원본 X 화면을 흉내 낸 배경 */
+  body { margin: 0; font-family: sans-serif; }
+  #react-root { padding: 20px; color: #536471; }
+</style>
+</head>
+<body>
+
+<div id="react-root"></div>
+
+<script>
+/* 확장 API 대역 */
+window.chrome = {
+  storage: {
+    local: {
+      get: function (d, cb) { cb(Object.assign({}, d)); },
+      set: function () {}
+    },
+    onChanged: { addListener: function () {} }
+  },
+  runtime: { lastError: null }
+};
+
+/* 가짜 타임라인 만들기 */
+(function () {
+  const names = ['홍조', 'Jessica Mary', '핫도그소스는절망위에', '레이', '리제노아 식후사용자제',
+    '개발자 노트', '오늘의 기록', '밤하늘', '커피 두 잔', '자료구조 스터디',
+    '주말 계획', '사진 창고', '느린 산책', '작업실', '메모장'];
+  const bodies = [
+    '토스 짱나서 안쓰고버텻는데 어느순간부터 ㄹㅇ 뭔가.. 온세상이 토스를 써서 내가 토스를 안쓸수가없게됨 뭔가 카톡처럼..',
+    '나를 팔로우했습니다.',
+    '사람이 사과를 햇으면 좀 뇌절을 그만해야 할 거 아님... 문제점 깨닫고 삭제했다가\n너 여기서도 계속 물어 뜯으면 솔직히 그냥 화낼 대상이 필요했을 뿐인 거 아니냐고',
+    '원하는 반응 안 나오니까 갑분 죽여버리는 거 웃기다',
+    '스프레드시트 화면으로 타임라인을 보면 글자에만 집중하게 된다.',
+    '오늘 작업 기록: 열 너비 조절, 정렬, 찾기까지 마무리.',
+    '창밖에 비가 온다. 커피 한 잔 더.',
+    '표로 보니 한 화면에 훨씬 많이 들어온다.'
+  ];
+  const counts = [['12', '3.4만', '56', '7,890'], ['1', '2', '48', '1,203'], ['', '', '3', '95'],
+                  ['7', '112', '2.1만', '33.4만'], ['3', '9', '77', '2,410']];
+
+  let html = '';
+  for (let i = 0; i < 24; i++) {
+    const n = names[i % names.length];
+    const b = bodies[i % bodies.length];
+    const c = counts[i % counts.length];
+    const handle = 'user' + (i + 1);
+    html += `
+    <article data-testid="tweet">
+      <div data-testid="Tweet-User-Avatar"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>
+      <div data-testid="User-Name">
+        <a role="link" href="/${handle}"><span>${n}</span></a>
+        <a href="/${handle}/status/${100000 + i}"><time datetime="2026-09-0${(i % 8) + 1}T0${i % 10}:2${i % 6}:00.000Z">${i + 1}시간</time></a>
+      </div>
+      <div data-testid="tweetText">${b}</div>
+      ${i % 3 === 0 ? '<div data-testid="tweetPhoto"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>' : ''}
+      <div role="group">
+        <button data-testid="reply"><span>${c[0]}</span></button>
+        <button data-testid="retweet"><span>${c[1]}</span></button>
+        <button data-testid="like"><span>${c[2]}</span></button>
+        <a href="/${handle}/status/${100000 + i}/analytics"><span>${c[3]}</span></a>
+      </div>
+    </article>`;
+  }
+  document.getElementById('react-root').innerHTML = html;
+})();
+</script>
+
+<script src="../src/core.js"></script>
+<script src="../src/scraper.js"></script>
+<script src="../src/actions.js"></script>
+<script src="../src/grid.js"></script>
+<script src="../src/chrome-ui.js"></script>
+<script>
+/* 미리보기에서는 주소가 x.com이 아니므로 화면 종류를 고정한다 */
+window.__XSHEETS__.scraper.pageKind = function () { return 'timeline'; };
+window.__XSHEETS__.scraper.pageTitle = function () { return '홈'; };
+</script>
+<script src="../src/main.js"></script>
+<script>
+/* 미리보기에서는 기다리지 않고 바로 표를 띄우고, 원본 자리는 접어 둔다 */
+window.__XSHEETS__.main.mount();
+document.getElementById('react-root').style.display = 'none';
+</script>
+
+</body>
+</html>

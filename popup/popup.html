@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>X Sheets</title>
+<style>
+  body {
+    width: 250px;
+    margin: 0;
+    padding: 14px;
+    font-family: "Malgun Gothic", "맑은 고딕", "Segoe UI", Arial, sans-serif;
+    font-size: 12px;
+    color: #202124;
+    background: #ffffff;
+  }
+  h1 {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0 0 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 0;
+  }
+  label { color: #3c4043; }
+  select {
+    font-size: 12px;
+    padding: 3px 4px;
+    border: 1px solid #c4c7c5;
+    border-radius: 3px;
+    background: #fff;
+  }
+  .note {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #e0e0e0;
+    color: #80868b;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+  <h1>X Sheets</h1>
+
+  <div class="row">
+    <label for="enabled">시트 화면 사용</label>
+    <input type="checkbox" id="enabled">
+  </div>
+
+  <div class="row">
+    <label for="wrap">자동 줄 바꿈</label>
+    <input type="checkbox" id="wrap">
+  </div>
+
+  <div class="row">
+    <label for="autoLoad">자동으로 더 읽기</label>
+    <input type="checkbox" id="autoLoad">
+  </div>
+
+  <div class="row">
+    <label for="media">이미지</label>
+    <select id="media">
+      <option value="hide">숨김</option>
+      <option value="small">아주 작게</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label for="zoom">확대 비율</label>
+    <select id="zoom">
+      <option value="75">75%</option>
+      <option value="90">90%</option>
+      <option value="100">100%</option>
+      <option value="125">125%</option>
+      <option value="150">150%</option>
+    </select>
+  </div>
+
+  <div class="row">
+    <label for="rowLimit">보관 행 수</label>
+    <select id="rowLimit">
+      <option value="500">500</option>
+      <option value="1000">1000</option>
+      <option value="3000">3000</option>
+      <option value="10000">10000</option>
+    </select>
+  </div>
+
+  <div class="note">
+    화살표로 칸 이동, Ctrl+C로 복사, Enter로 원본 글 열기. 열 이름을 누르면 정렬합니다.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
