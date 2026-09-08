@@ -7,6 +7,7 @@
   const UI = (XS.ui = {});
 
   let root, docName, nameBox, formula, statusLeft, statusRight, sheetTab, findInput;
+  let docSub, updateLink;
   let flashTimer = 0;
 
   /* ---------- 작은 아이콘 ---------- */
@@ -53,7 +54,17 @@
     const box = U.el('div', 'xs-titlebox');
     docName = U.el('div', 'xs-docname', XS.scraper.pageTitle());
     box.appendChild(docName);
-    box.appendChild(U.el('div', 'xs-docsub', 'X Sheets'));
+
+    docSub = U.el('div', 'xs-docsub');
+    docSub.appendChild(U.el('span', null, 'X Sheets v' + XS.version));
+    updateLink = document.createElement('a');
+    updateLink.className = 'xs-updatelink';
+    updateLink.target = '_blank';
+    updateLink.rel = 'noopener';
+    updateLink.hidden = true;
+    docSub.appendChild(updateLink);
+    box.appendChild(docSub);
+
     bar.appendChild(box);
 
     return bar;
@@ -112,9 +123,27 @@
 
     bar.appendChild(U.el('span', 'xs-sep'));
 
+    // X 검색 - 이름 상자처럼 생긴 칸에 검색어를 적고 Enter를 누르면 실제 X 검색을 실행한다.
+    const xsearch = U.el('label', 'xs-xsearch');
+    xsearch.appendChild(U.el('span', 'xs-xsearch-tag', '검색'));
+    const xsearchInput = document.createElement('input');
+    xsearchInput.type = 'text';
+    xsearchInput.placeholder = 'X 검색어 입력 후 Enter';
+    xsearchInput.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        XS.actions.searchOnX(xsearchInput.value);
+      }
+    });
+    xsearch.appendChild(xsearchInput);
+    bar.appendChild(xsearch);
+
+    bar.appendChild(U.el('span', 'xs-sep'));
+
     bar.appendChild(iconButton('back', '뒤로', function () { history.back(); }));
     bar.appendChild(iconButton('forward', '앞으로', function () { history.forward(); }));
-    bar.appendChild(iconButton('reload', '새로 읽기', function () { XS.main.refresh(); }));
+    bar.appendChild(iconButton('reload', '새로 읽기', function () { XS.main.refresh({ hard: true }); }));
 
     bar.appendChild(U.el('span', 'xs-sep'));
 
@@ -146,30 +175,45 @@
     });
     bar.appendChild(wrap);
 
-    // 이미지
+    // 프로필 사진
     const media = U.el('select', 'xs-select');
-    [['hide', '이미지 숨김'], ['small', '이미지 아주 작게']].forEach(function (p) {
+    [['hide', '프로필 사진 숨김'], ['small', '프로필 사진 작게']].forEach(function (p) {
       const o = U.el('option', null, p[1]);
       o.value = p[0];
       media.appendChild(o);
     });
     media.value = XS.settings.media;
-    media.title = '이미지 표시 방식';
+    media.title = '프로필 사진 표시 방식';
     media.addEventListener('change', function () {
       XS.saveSettings({ media: media.value });
       XS.grid.rebuild();
     });
     bar.appendChild(media);
 
-    // 프로모션(광고) 게시물
+    // 게시물 속 사진/영상 - 프로필 사진과는 별개 설정이다.
+    const tweetMedia = U.el('select', 'xs-select');
+    [['hide', '게시물 미디어 숨김'], ['small', '게시물 미디어 작게'], ['preview', '게시물 미디어 미리보기']].forEach(function (p) {
+      const o = U.el('option', null, p[1]);
+      o.value = p[0];
+      tweetMedia.appendChild(o);
+    });
+    tweetMedia.value = XS.settings.tweetMedia;
+    tweetMedia.title = '게시물 속 사진·영상 표시 방식';
+    tweetMedia.addEventListener('change', function () {
+      XS.saveSettings({ tweetMedia: tweetMedia.value });
+      XS.grid.rebuild();
+    });
+    bar.appendChild(tweetMedia);
+
+    // 광고(프로모션) 게시물 - "광고"라고만 뜨는 것과 "프로모션"이라고 뜨는 것 모두 여기 하나로 묶는다.
     const promoted = U.el('select', 'xs-select');
-    [['show', '프로모션 그대로'], ['gray', '프로모션 회색 처리'], ['hide', '프로모션 제외']].forEach(function (p) {
+    [['show', '광고 그대로 보기'], ['gray', '광고 회색 처리'], ['hide', '광고 제외']].forEach(function (p) {
       const o = U.el('option', null, p[1]);
       o.value = p[0];
       promoted.appendChild(o);
     });
     promoted.value = XS.settings.promoted;
-    promoted.title = '프로모션(광고) 게시물 처리 방식';
+    promoted.title = '광고·프로모션 게시물 처리 방식';
     promoted.addEventListener('change', function () {
       XS.saveSettings({ promoted: promoted.value });
       XS.grid.rebuild();
@@ -222,8 +266,9 @@
   function statusBar() {
     const bar = U.el('div', 'xs-statusbar');
 
-    sheetTab = U.el('div', 'xs-sheettab', XS.scraper.pageTitle());
+    sheetTab = U.el('div', 'xs-sheettabs');
     bar.appendChild(sheetTab);
+    renderSheetTabs();
 
     statusLeft = U.el('div', 'xs-statusleft', '');
     bar.appendChild(statusLeft);
@@ -232,6 +277,30 @@
     bar.appendChild(statusRight);
 
     return bar;
+  }
+
+  // 엑셀의 시트 탭처럼, 홈 화면이면 추천/팔로우 중을 각각 눌러서 옮겨다닐 수 있게 한다.
+  // 다른 화면은 예전처럼 이름표 하나만 보여준다.
+  function renderSheetTabs() {
+    if (!sheetTab) return;
+    sheetTab.textContent = '';
+
+    const tabs = XS.scraper.timelineTabs();
+    const multi = tabs.length > 1;
+    const labels = multi ? tabs : [XS.scraper.pageTitle()];
+    const active = multi ? XS.scraper.activeTabLabel() : labels[0];
+
+    labels.forEach(function (label) {
+      const b = U.el('button', 'xs-sheettabbtn', label);
+      b.type = 'button';
+      if (label === active) b.classList.add('xs-sheettabon');
+      if (multi) {
+        b.addEventListener('click', function () {
+          if (label !== XS.scraper.activeTabLabel()) XS.main.switchTimelineTab(label);
+        });
+      }
+      sheetTab.appendChild(b);
+    });
   }
 
   /* ---------- 갱신 ---------- */
@@ -261,9 +330,8 @@
   };
 
   UI.updateTitle = function () {
-    const t = XS.scraper.pageTitle();
-    if (docName) docName.textContent = t;
-    if (sheetTab) sheetTab.textContent = t;
+    if (docName) docName.textContent = XS.scraper.pageTitle();
+    renderSheetTabs();
   };
 
   UI.flash = function (msg) {
@@ -295,6 +363,13 @@
 
   UI.setFindValue = function (v) {
     if (findInput) findInput.value = v || '';
+  };
+
+  UI.showUpdate = function (latestVersion, url) {
+    if (!updateLink) return;
+    updateLink.textContent = ' · 새 버전 v' + latestVersion;
+    updateLink.href = url;
+    updateLink.hidden = false;
   };
 
   /* ---------- 인용 리트윗 작성창 ---------- */

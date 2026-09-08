@@ -11,9 +11,17 @@ function tweet(i, opts) {
   opts = opts || {};
   const socialLine = opts.promoted
     ? '<div data-testid="socialContext">프로모션</div>'
-    : '';
+    : opts.ad
+      ? '<div data-testid="socialContext">광고</div>'
+      : '';
   const lockIcon = opts.protected
     ? '<svg aria-label="비공개 계정"></svg>'
+    : '';
+  const quoteBlock = opts.quote
+    ? `<div data-testid="tweetText">${opts.quote}</div>`
+    : '';
+  const videoBlock = opts.video
+    ? `<div data-testid="videoPlayer"><video src="${opts.video.src || ''}" poster="${opts.video.poster || ''}"></video></div>`
     : '';
   return `
   <article data-testid="tweet">
@@ -25,7 +33,9 @@ function tweet(i, opts) {
     </div>
     ${socialLine}
     <div data-testid="tweetText">첫째 줄 ${i}\n둘째 줄 내용입니다.</div>
+    ${quoteBlock}
     <div data-testid="tweetPhoto"><img src="https://pbs.example/p${i}.jpg"></div>
+    ${videoBlock}
     <div role="group" aria-label="12 답글, 34 리트윗, 56 마음, 7890 조회">
       <button data-testid="reply"><span>12</span></button>
       <button data-testid="retweet"><span>3.4만</span></button>
@@ -52,20 +62,32 @@ const stored = {};
 window.chrome = {
   storage: {
     local: {
-      get(defaults, cb) { cb(Object.assign({}, defaults, stored)); },
+      get(defaults, cb) {
+        if (Array.isArray(defaults)) {
+          const out = {};
+          defaults.forEach(function (k) { if (k in stored) out[k] = stored[k]; });
+          cb(out);
+        } else {
+          cb(Object.assign({}, defaults, stored));
+        }
+      },
       set(patch) { Object.assign(stored, patch); }
     },
     onChanged: { addListener() {} }
   },
-  runtime: { lastError: null }
+  runtime: {
+    lastError: null,
+    getManifest() { return { version: '1.3.0' }; }
+  }
 };
 window.IntersectionObserver = class {
   observe() {} disconnect() {} unobserve() {}
 };
 window.scrollTo = () => {};
 window.navigator.clipboard = { writeText: () => Promise.resolve() };
+window.fetch = function () { return Promise.reject(new Error('오프라인 - 테스트 기본값')); };
 
-for (const f of ['core.js', 'scraper.js', 'actions.js', 'grid.js', 'chrome-ui.js', 'main.js']) {
+for (const f of ['core.js', 'update.js', 'scraper.js', 'actions.js', 'grid.js', 'chrome-ui.js', 'main.js']) {
   try {
     window.eval(fs.readFileSync(path.join(EXT, 'src', f), 'utf8'));
   } catch (e) {
@@ -189,6 +211,7 @@ setTimeout(async () => {
           const editBox = doc.createElement('div');
           editBox.setAttribute('data-testid', 'tweetTextarea_0');
           editBox.contentEditable = 'true';
+          editBox.tabIndex = 0; // 실제 X 작성창처럼 포커스 가능하게 (jsdom은 이게 없으면 focus가 안 먹는다)
           dialog.appendChild(editBox);
           const postBtn = doc.createElement('button');
           postBtn.setAttribute('data-testid', 'tweetButton');
@@ -207,11 +230,13 @@ setTimeout(async () => {
   });
 
   // jsdom은 execCommand를 구현하지 않으므로, 실제 브라우저의 삽입 동작을 흉내낸다.
+  // (입력칸이면 value에, contenteditable이면 textContent에 넣는다)
   window.document.execCommand = function (cmd, ui, value) {
     if (cmd === 'insertText') {
-      const el = doc.querySelector('[data-testid="tweetTextarea_0"]');
+      const el = doc.activeElement;
       if (el) {
-        el.textContent = (el.textContent || '') + value;
+        if ('value' in el) el.value = (el.value || '') + value;
+        else el.textContent = (el.textContent || '') + value;
         el.dispatchEvent(new window.Event('input', { bubbles: true }));
       }
     }
@@ -269,17 +294,20 @@ setTimeout(async () => {
   check('1.2K = 1200', T('1.2K') === 1200);
   check('빈값 = 0', T('') === 0);
 
-  console.log('\n[13] 프로모션 게시물, 비공개 계정 표시');
+  console.log('\n[13] 프로모션/광고 게시물, 비공개 계정 표시');
   doc.getElementById('react-root').insertAdjacentHTML('beforeend', tweet(900, { promoted: true }));
   doc.getElementById('react-root').insertAdjacentHTML('beforeend', tweet(901, { protected: true }));
+  doc.getElementById('react-root').insertAdjacentHTML('beforeend', tweet(902, { ad: true }));
   const addedFlagged = XS.scraper.collect();
-  check('광고글, 비공개글 추가', addedFlagged === 2, '실제 ' + addedFlagged);
+  check('광고글, 비공개글 추가', addedFlagged === 3, '실제 ' + addedFlagged);
 
   const promoRow = XS.store.rows.find(function (r) { return r.tweetId === '1900'; });
   const protRow = XS.store.rows.find(function (r) { return r.tweetId === '1901'; });
+  const adRow = XS.store.rows.find(function (r) { return r.tweetId === '1902'; });
   check('프로모션 감지', !!promoRow && promoRow.promoted === true);
   check('일반 글은 프로모션 아님', !!targetRow && targetRow.promoted === false);
   check('비공개 계정 감지', !!protRow && protRow.protected === true);
+  check('"광고"라고만 떠도 감지됨', !!adRow && adRow.promoted === true);
 
   XS.saveSettings({ promoted: 'gray' });
   XS.grid.rebuild();
@@ -319,6 +347,161 @@ setTimeout(async () => {
   check('목표 개수(10개) 이상 모았다', gainedPull >= 10, '실제 ' + gainedPull);
   check('과도하게 다 긁어오지 않고 목표 근처에서 멈췄다', gainedPull < 20, '실제 ' + gainedPull);
   check('고정 대기 없이 빠르게 끝났다', elapsed < 5000, elapsed + 'ms');
+
+  console.log('\n[15] 인용 트윗 표시');
+  doc.getElementById('react-root').insertAdjacentHTML('beforeend',
+    tweet(950, { quote: '이건 인용된 원본 트윗입니다.' }));
+  XS.scraper.collect();
+  XS.grid.rebuild();
+
+  const qRow = XS.store.rows.find(function (r) { return r.tweetId === '1950'; });
+  check('인용문 필드가 저장된다', !!qRow && qRow.quote === '이건 인용된 원본 트윗입니다.');
+
+  const qIdx = XS.grid.view.indexOf(qRow);
+  const textColIdx = XS.grid.cols.findIndex(function (c) { return c.key === 'text'; });
+  const qCell = qIdx !== -1 ? XS.grid.cellEls[qIdx][textColIdx] : null;
+  check('본문 줄이 따로 있다', !!qCell && !!qCell.querySelector('.xs-linebody'));
+  check('인용문이 별도 줄로 표시된다', !!qCell && !!qCell.querySelector('.xs-linequote'));
+  check('인용문 내용이 일치한다', !!qCell && qCell.querySelector('.xs-linequote').textContent === '이건 인용된 원본 트윗입니다.');
+
+  console.log('\n[16] 추천/팔로우 중 시트 탭');
+  const tablist = doc.createElement('div');
+  tablist.setAttribute('role', 'tablist');
+  tablist.innerHTML =
+    '<div role="tab" aria-selected="true"><span>추천</span></div>' +
+    '<div role="tab" aria-selected="false"><span>팔로우 중</span></div>';
+  doc.body.appendChild(tablist);
+
+  const tabEls = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
+  tabEls.forEach(function (t) {
+    t.addEventListener('click', function () {
+      tabEls.forEach(function (o) { o.setAttribute('aria-selected', o === t ? 'true' : 'false'); });
+    });
+  });
+
+  check('탭 2개 인식', XS.scraper.timelineTabs().length === 2);
+  check('활성 탭은 추천', XS.scraper.activeTabLabel() === '추천');
+  check('시트 열쇠에 탭 이름 포함', XS.scraper.sheetKey() === '/home#추천');
+
+  // 지금까지는 store.key가 비어 있어("") 아직 어느 탭에도 속하지 않은 상태였다.
+  // "추천" 시트로 한 번 자리잡게 해서 기준점을 만든다.
+  XS.main.switchTimelineTab('추천');
+  await XS.util.wait(500);
+  const beforeSwitchCount = XS.store.rows.length;
+  check('추천 탭에 기준 데이터가 채워졌다', beforeSwitchCount > 0, '실제 ' + beforeSwitchCount);
+
+  XS.main.switchTimelineTab('팔로우 중');
+  check('실제 탭도 함께 눌린다', XS.scraper.activeTabLabel() === '팔로우 중');
+  check('시트 열쇠가 팔로우 중으로 바뀐다', XS.store.key === '/home#팔로우 중');
+  check('새 탭은 빈 시트로 시작한다', XS.store.rows.length === 0);
+
+  doc.getElementById('react-root').insertAdjacentHTML('beforeend', tweet(960));
+  await XS.util.wait(500);
+  check('팔로우 중 탭에 새 글이 쌓인다', XS.store.rows.some(function (r) { return r.tweetId === '1960'; }));
+
+  XS.main.switchTimelineTab('추천');
+  check('추천 탭으로 되돌아간다', XS.store.key === '/home#추천');
+  check('추천 탭 내용이 그대로 보존된다', XS.store.rows.length === beforeSwitchCount);
+  check('팔로우 중 글이 추천에 섞이지 않는다', !XS.store.rows.some(function (r) { return r.tweetId === '1960'; }));
+
+  XS.ui.updateTitle();
+  const tabBtns = root.querySelectorAll('.xs-sheettabbtn');
+  check('하단에 시트 탭 버튼 2개', tabBtns.length === 2, '실제 ' + tabBtns.length);
+  const onBtn = root.querySelector('.xs-sheettabbtn.xs-sheettabon');
+  check('추천 탭이 활성 표시', !!onBtn && onBtn.textContent === '추천');
+
+  console.log('\n[17] X 검색');
+  const searchInput = doc.createElement('input');
+  searchInput.setAttribute('data-testid', 'SearchBox_Search_Input');
+  doc.body.appendChild(searchInput);
+
+  let sawEnter = false;
+  searchInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') sawEnter = true;
+  });
+
+  XS.actions.searchOnX('  고양이 밈  ');
+  check('검색창에 글자가 들어간다', searchInput.value === '고양이 밈', JSON.stringify(searchInput.value));
+  check('Enter 키를 대신 눌러준다', sawEnter === true);
+  check('검색 알림 문구', root.querySelector('.xs-statusright').textContent.includes('검색'));
+
+  searchInput.remove();
+  const hrefBefore = window.location.href;
+  XS.actions.searchOnX('');
+  check('빈 검색어는 무시한다', window.location.href === hrefBefore);
+
+  console.log('\n[18] 버전, 업데이트 확인');
+  check('현재 버전을 읽어온다', XS.version === '1.3.0', XS.version);
+  check('숫자 비교 - 낮은 버전', XS.update.isNewer('1.4.0', '1.3.0') === true);
+  check('숫자 비교 - 같은 버전', XS.update.isNewer('1.3.0', '1.3.0') === false);
+  check('숫자 비교 - 자리수가 다른 경우', XS.update.isNewer('1.3.10', '1.3.9') === true);
+  check('v 접두사 무시', XS.update.isNewer('v2.0.0', '1.9.9') === true);
+
+  const realFetch = window.fetch;
+  window.fetch = function () {
+    return Promise.resolve({
+      ok: true,
+      json: function () {
+        return Promise.resolve({ tag_name: 'v1.4.0', html_url: 'https://github.com/yhw9906/x-sheets/releases/tag/v1.4.0' });
+      }
+    });
+  };
+  XS.update.check();
+  await XS.util.wait(60);
+  window.fetch = realFetch;
+
+  const upLink = root.querySelector('.xs-updatelink');
+  check('업데이트 안내가 뜬다', !!upLink && !upLink.hidden);
+  check('새 버전 번호가 보인다', !!upLink && upLink.textContent.includes('1.4.0'));
+  check('릴리즈 페이지로 연결된다', !!upLink && upLink.href.includes('releases/tag/v1.4.0'));
+
+  console.log('\n[19] 게시물 미디어 미리보기');
+  doc.getElementById('react-root').insertAdjacentHTML('beforeend',
+    tweet(970, { video: { src: 'https://video.example/clip970.mp4', poster: 'https://video.example/clip970.jpg' } }));
+  doc.getElementById('react-root').insertAdjacentHTML('beforeend',
+    tweet(971, { video: { src: 'blob:https://x.com/xxxx-yyyy', poster: 'https://video.example/clip971.jpg' } }));
+  XS.scraper.collect();
+
+  const vidRow = XS.store.rows.find(function (r) { return r.tweetId === '1970'; });
+  const blobRow = XS.store.rows.find(function (r) { return r.tweetId === '1971'; });
+  check('영상 주소를 읽어온다', !!vidRow && vidRow.clips.length === 1 &&
+    vidRow.clips[0].src === 'https://video.example/clip970.mp4');
+  check('blob 주소는 재생 주소로 쓰지 않는다', !!blobRow && blobRow.clips[0].src === '' &&
+    blobRow.clips[0].poster === 'https://video.example/clip971.jpg');
+
+  XS.saveSettings({ tweetMedia: 'preview' });
+  XS.grid.rebuild();
+
+  const mediaColIdx = XS.grid.cols.findIndex(function (c) { return c.key === 'media'; });
+  check('미디어 열이 넓어진다', XS.grid.cols[mediaColIdx].width === 160);
+
+  const vIdx = XS.grid.view.indexOf(vidRow);
+  const vCell = XS.grid.cellEls[vIdx][mediaColIdx];
+  check('미리보기 상자가 생긴다', !!vCell.querySelector('.xs-mediaprev'));
+  check('사진 미리보기 타일이 있다', vCell.querySelectorAll('img.xs-prevtile').length >= 1);
+  const videoTile = vCell.querySelector('video.xs-prevtile');
+  check('영상 미리보기 타일이 있다', !!videoTile);
+  check('영상은 음소거 자동재생 반복으로 설정된다', !!videoTile && videoTile.muted && videoTile.loop && videoTile.autoplay);
+  check('영상 재생 주소가 들어간다', !!videoTile && videoTile.src === 'https://video.example/clip970.mp4');
+
+  const bIdx = XS.grid.view.indexOf(blobRow);
+  const bCell = XS.grid.cellEls[bIdx][mediaColIdx];
+  check('재생 불가한 영상은 사진(포스터)만 보여준다',
+    !bCell.querySelector('video.xs-prevtile') && bCell.querySelectorAll('img.xs-prevtile').length >= 1);
+
+  XS.saveSettings({ tweetMedia: 'hide' });
+  XS.grid.rebuild();
+  check('숨김으로 되돌리면 미디어 열이 좁아진다', XS.grid.cols[mediaColIdx].width === 90);
+  check('숨김 모드에서는 미리보기 상자가 없다',
+    !XS.grid.cellEls[XS.grid.view.indexOf(vidRow)][mediaColIdx].querySelector('.xs-mediaprev'));
+
+  XS.saveSettings({ media: 'small' });
+  XS.grid.rebuild();
+  const nameColIdx = XS.grid.cols.findIndex(function (c) { return c.key === 'name'; });
+  const vIdx2 = XS.grid.view.indexOf(vidRow);
+  check('프로필 사진 설정은 게시물 미디어와 독립적으로 작동한다',
+    !!XS.grid.cellEls[vIdx2][nameColIdx].querySelector('img.xs-thumb'));
+  XS.saveSettings({ media: 'hide' });
 
   console.log('\n결과: ' + (fails.length === 0 ? '모두 통과' : fails.length + '건 실패 -> ' + fails.join(', ')));
   process.exit(fails.length ? 1 : 0);

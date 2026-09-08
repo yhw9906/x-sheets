@@ -12,7 +12,7 @@
   let toggleBtn = null;
   let observer = null;
   let mounted = false;
-  let lastPath = location.pathname + location.search;
+  let lastKey = XS.scraper.sheetKey();
 
   /* ---------- 원본에서 더 읽어오기 ---------- */
 
@@ -102,7 +102,8 @@
     const kind = XS.scraper.pageKind();
     if (kind === 'other') return;   // 쪽지, 설정 화면은 원본 그대로 둔다.
 
-    XS.store.reset(kind === 'notification' ? 'notification' : 'timeline', location.pathname);
+    lastKey = XS.scraper.sheetKey();
+    XS.store.switchTo(kind === 'notification' ? 'notification' : 'timeline', lastKey);
 
     root = U.el('div', 'xs-root');
     root.id = 'x-sheets-root';
@@ -159,24 +160,46 @@
     if (toggleBtn) { toggleBtn.remove(); toggleBtn = null; }
   }
 
-  M.refresh = function () {
-    const kind = XS.scraper.pageKind();
-    XS.store.reset(kind === 'notification' ? 'notification' : 'timeline', location.pathname);
+  // hard: true 면 이 시트에 모아둔 내용까지 지우고 새로 시작한다("새로 읽기" 버튼).
+  // hard가 아니면 예전에 이 시트(예: 추천, 팔로우 중)에 모아둔 내용이 있을 때 그대로 이어서 보여준다.
+  function applyContext(kind, key, hard) {
+    if (hard) XS.store.reset(kind, key);
+    else XS.store.switchTo(kind, key);
+
     window.scrollTo(0, 0);
     XS.grid.setKind(XS.store.kind);
     XS.ui.updateTitle();
     XS.ui.setFindValue('');
     XS.grid.setQuery('');
+    XS.grid.rebuild();
+
     setTimeout(function () {
       XS.scraper.collect();
       XS.grid.onNewData();
       XS.grid.fillIfNeeded();
     }, 400);
+  }
+
+  M.refresh = function (opts) {
+    const kind = XS.scraper.pageKind();
+    const key = XS.scraper.sheetKey();
+    lastKey = key;
+    applyContext(kind === 'notification' ? 'notification' : 'timeline', key, !!(opts && opts.hard));
+  };
+
+  // 홈 화면의 추천/팔로우 중 탭을 우리 쪽 시트 탭으로 전환한다. 실제 X의 탭도 같이 눌러서
+  // 원본 페이지의 스크롤 대상이 지금 보고 있는 시트와 어긋나지 않게 한다.
+  M.switchTimelineTab = function (label) {
+    XS.scraper.clickTab(label);
+    const key = '/home#' + label;
+    lastKey = key;
+    applyContext('timeline', key, false);
   };
 
   /* ---------- 주소 변화 ---------- */
 
   // 콘텐츠 스크립트는 페이지 쪽 history 호출을 가로챌 수 없으므로 주소를 지켜본다.
+  // 추천/팔로우 중처럼 주소는 그대로인 채 탭만 바뀌는 경우도 여기서 함께 잡아낸다.
   function watchNavigation() {
     const onChange = U.debounce(function () {
       if (!XS.settings.enabled) return;
@@ -189,9 +212,9 @@
     }, 350);
 
     function check() {
-      const path = location.pathname + location.search;
-      if (path === lastPath) return;
-      lastPath = path;
+      const key = XS.scraper.sheetKey();
+      if (key === lastKey) return;
+      lastKey = key;
       onChange();
     }
 
@@ -217,7 +240,7 @@
         }
         if (!mounted) return;
         XS.ui.applySettings();
-        if ('media' in patch || 'promoted' in patch) XS.grid.rebuild();
+        if ('media' in patch || 'promoted' in patch || 'tweetMedia' in patch) XS.grid.rebuild();
       });
     } catch (e) { /* 무시 */ }
   }
@@ -228,6 +251,7 @@
     await XS.loadSettings();
     watchNavigation();
     watchSettings();
+    if (XS.update) XS.update.check();
 
     if (XS.settings.enabled) {
       // X가 첫 화면을 그릴 때까지 잠깐 기다린다.

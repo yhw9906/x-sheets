@@ -128,6 +128,32 @@
     });
   };
 
+  /* ---------- X 검색 ---------- */
+
+  // 시트가 화면 전체를 덮고 있어서 원본의 검색창을 직접 누를 수 없기 때문에,
+  // 검색창을 찾아 대신 글자를 넣고 Enter를 눌러준다.
+  A.searchOnX = function (query) {
+    query = String(query || '').trim();
+    if (!query) return;
+
+    const input = document.querySelector('[data-testid="SearchBox_Search_Input"]');
+    if (!input) {
+      // 검색창을 못 찾으면(다른 화면이거나 구조가 바뀌었으면) 주소로 바로 이동한다.
+      location.href = 'https://x.com/search?q=' + encodeURIComponent(query) + '&src=typed_query';
+      return;
+    }
+
+    input.focus();
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, query);
+
+    const enter = new KeyboardEvent('keydown', {
+      key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true
+    });
+    input.dispatchEvent(enter);
+    XS.ui.flash('X에서 "' + query + '" 검색 중');
+  };
+
   /* ---------- 인용 리트윗 ---------- */
 
   // 시트 안 작성창에서 쓴 글을 받아서, 원본 페이지의 인용 작성창을 열고

@@ -19,7 +19,7 @@
 
   S.pageTitle = function () {
     const p = location.pathname;
-    if (p === '/' || p === '/home') return '홈';
+    if (p === '/' || p === '/home') return S.activeTabLabel() || '홈';
     if (p.startsWith('/notifications')) return '알림';
     if (p.startsWith('/explore')) return '탐색';
     if (p.startsWith('/search')) return '검색';
@@ -28,6 +28,45 @@
     if (/^\/[^/]+\/status\/\d+/.test(p)) return '게시물';
     if (/^\/[^/]+\/?$/.test(p)) return p.replace(/\//g, '') || '프로필';
     return p.replace(/^\//, '') || '시트';
+  };
+
+  /* ---------- 홈 화면의 추천/팔로우 중 탭 ---------- */
+
+  // 프로필의 게시물/답글/미디어 탭 등과 헷갈리지 않도록 홈 화면에서만 읽는다.
+  function homeTabs() {
+    const p = location.pathname;
+    if (p !== '/' && p !== '/home') return [];
+    return Array.prototype.slice.call(document.querySelectorAll('[role="tablist"] [role="tab"]'));
+  }
+
+  S.timelineTabs = function () {
+    return homeTabs().map(function (t) { return U.oneLine(U.text(t)); }).filter(Boolean);
+  };
+
+  S.activeTabLabel = function () {
+    const tabs = homeTabs();
+    for (let i = 0; i < tabs.length; i++) {
+      if (tabs[i].getAttribute('aria-selected') === 'true') return U.oneLine(U.text(tabs[i]));
+    }
+    return '';
+  };
+
+  S.clickTab = function (label) {
+    const tabs = homeTabs();
+    for (let i = 0; i < tabs.length; i++) {
+      if (U.oneLine(U.text(tabs[i])) === label) { tabs[i].click(); return true; }
+    }
+    return false;
+  };
+
+  // 시트를 구분하는 열쇠. 홈 화면은 추천/팔로우 중 탭까지 포함해서 서로 다른 시트로 다룬다.
+  S.sheetKey = function () {
+    const p = location.pathname;
+    if (p === '/' || p === '/home') {
+      const tab = S.activeTabLabel();
+      return tab ? '/home#' + tab : '/home';
+    }
+    return p + location.search;
   };
 
   /* ---------- 부분 추출기 ---------- */
@@ -68,18 +107,34 @@
 
   function mediaInfo(article) {
     const photos = article.querySelectorAll('[data-testid="tweetPhoto"] img');
-    const hasVideo = !!article.querySelector('[data-testid="videoPlayer"], video');
+    const players = article.querySelectorAll('[data-testid="videoPlayer"] video, video');
     const hasCard = !!article.querySelector('[data-testid="card.wrapper"]');
+
     const thumbs = [];
     photos.forEach(function (img) {
       const src = img.getAttribute('src');
       if (src) thumbs.push(src);
     });
+
+    // 움짤/동영상 재생 주소. blob: 주소는 원래 재생기에서만 쓸 수 있어 우리 칸에서는 못 쓴다.
+    const clips = [];
+    players.forEach(function (video) {
+      const poster = video.getAttribute('poster') || '';
+      let src = video.currentSrc || video.getAttribute('src') || '';
+      if (!src) {
+        const source = video.querySelector('source');
+        if (source) src = source.getAttribute('src') || '';
+      }
+      if (/^blob:/i.test(src)) src = '';
+      if (src || poster) clips.push({ src: src, poster: poster });
+    });
+
     const parts = [];
     if (photos.length) parts.push('사진 ' + photos.length);
-    if (hasVideo) parts.push('동영상');
-    if (hasCard && !photos.length && !hasVideo) parts.push('링크');
-    return { label: parts.join(', '), thumbs: thumbs.slice(0, 4) };
+    if (clips.length) parts.push('동영상');
+    if (hasCard && !photos.length && !clips.length) parts.push('링크');
+
+    return { label: parts.join(', '), thumbs: thumbs.slice(0, 4), clips: clips.slice(0, 4) };
   }
 
   function avatar(article) {
@@ -98,10 +153,13 @@
   }
 
   // 프로모션(광고) 게시물은 리트윗 표시 자리에 "프로모션"이라는 문구가 대신 뜬다.
+  // "프로모션"이라고 뜨는 것과 "광고"라고만 짧게 뜨는 것 둘 다 잡는다.
+  const PROMOTED_RE = /프로모션|광고|promoted|\bad\b/i;
+
   function isPromoted(article) {
     if (article.querySelector('[data-testid="promotedIndicator"]')) return true;
     const social = article.querySelector('[data-testid="socialContext"]');
-    if (social && /프로모션|promoted|광고\s*게시물|^ad$/i.test(U.text(social))) return true;
+    if (social && PROMOTED_RE.test(U.text(social))) return true;
     return false;
   }
 
@@ -168,6 +226,7 @@
       protected: isProtected(article),
       media: media.label,
       thumbs: media.thumbs,
+      clips: media.clips,
       avatar: avatar(article),
       url: 'https://x.com' + href
     };
@@ -230,6 +289,7 @@
       rel: rel,
       media: media.label,
       thumbs: media.thumbs,
+      clips: media.clips,
       avatar: avatar(article),
       url: href ? 'https://x.com' + href : ''
     };
@@ -267,6 +327,7 @@
           protected: t.protected,
           media: t.media,
           thumbs: t.thumbs,
+          clips: t.clips,
           avatar: t.avatar,
           url: t.url
         };

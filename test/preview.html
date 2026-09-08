@@ -53,9 +53,10 @@ window.chrome = {
     const handle = 'user' + (i + 1);
     const isPromo = i === 2;      // 세 번째 글은 프로모션으로
     const isLocked = i === 5;     // 여섯 번째 글은 비공개 계정으로
+    const hasVideo = i === 7;     // 여덟 번째 글은 영상으로
     html += `
     <article data-testid="tweet">
-      <div data-testid="Tweet-User-Avatar"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>
+      <div data-testid="Tweet-User-Avatar"><img src="https://picsum.photos/seed/av${i}/40"></div>
       <div data-testid="User-Name">
         <a role="link" href="/${handle}"><span>${n}</span></a>
         ${isLocked ? '<svg aria-label="비공개 계정"></svg>' : ''}
@@ -63,7 +64,8 @@ window.chrome = {
       </div>
       ${isPromo ? '<div data-testid="socialContext">프로모션</div>' : ''}
       <div data-testid="tweetText">${b}</div>
-      ${i % 3 === 0 ? '<div data-testid="tweetPhoto"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></div>' : ''}
+      ${i % 3 === 0 ? `<div data-testid="tweetPhoto"><img src="https://picsum.photos/seed/p${i}/300"></div>` : ''}
+      ${hasVideo ? '<div data-testid="videoPlayer"><video src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" poster="https://picsum.photos/seed/vid/300"></video></div>' : ''}
       <div role="group">
         <button data-testid="reply"><span>${c[0]}</span></button>
         <button data-testid="retweet"><span>${c[1]}</span></button>

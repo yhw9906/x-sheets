@@ -179,7 +179,21 @@
 
   /* ---------- 행 그리기 ---------- */
 
+  // 게시물 미디어를 "미리보기"로 두면 사진/영상이 잘 보이게 그 열만 넓혀준다.
+  // 설정이 실제로 바뀐 순간에만 적용해서, 사용자가 손으로 조절한 열 너비를 덮어쓰지 않는다.
+  let lastMediaMode = null;
+  function syncMediaWidth() {
+    const mode = XS.settings.tweetMedia;
+    if (mode === lastMediaMode) return;
+    lastMediaMode = mode;
+    const col = G.cols.find(function (c) { return c.key === 'media'; });
+    if (!col) return;
+    col.width = mode === 'preview' ? 160 : 90;
+    applyTemplate();
+  }
+
   G.rebuild = function () {
+    syncMediaWidth();
     const keep = Math.max(CHUNK, G.rendered);
     G.recompute();
     clearRows();
@@ -223,6 +237,7 @@
     G.cols = (COLSETS[kind] || COLSETS.timeline).map(function (c) {
       return Object.assign({}, c);
     });
+    lastMediaMode = null;
     G.sort = null;
     G.query = '';
     G.sel = { r: 0, c: 0, r2: 0, c2: 0 };
@@ -291,26 +306,73 @@
   }
 
   function fillCell(cell, row, col) {
-    const showThumb = XS.settings.media === 'small';
-
-    if (col.key === 'name' && showThumb && row.avatar) {
+    // 프로필 사진은 예전 그대로 hide/small 두 단계만 쓴다.
+    if (col.key === 'name' && XS.settings.media === 'small' && row.avatar) {
       const img = U.el('img', 'xs-thumb');
       img.src = row.avatar;
       img.loading = 'lazy';
       cell.appendChild(img);
     }
 
-    if (col.key === 'media' && showThumb && row.thumbs && row.thumbs.length) {
-      row.thumbs.forEach(function (src) {
-        const img = U.el('img', 'xs-thumb');
-        img.src = src;
-        img.loading = 'lazy';
-        cell.appendChild(img);
-      });
+    // 게시물 속 사진/영상은 별도 설정(hide/small/preview)을 따른다.
+    if (col.key === 'media') {
+      const mode = XS.settings.tweetMedia;
+      if (mode === 'small' && row.thumbs && row.thumbs.length) {
+        row.thumbs.forEach(function (src) {
+          const img = U.el('img', 'xs-thumb');
+          img.src = src;
+          img.loading = 'lazy';
+          cell.appendChild(img);
+        });
+      } else if (mode === 'preview') {
+        appendMediaPreview(cell, row);
+      }
+    }
+
+    // 내용 칸은 인용한 원본 글을 옅은 회색 줄로 따로 구분해서 보여준다.
+    if (col.key === 'text') {
+      let head = row.text || '';
+      if (row.context) head = row.context + '\n' + head;
+      if (head) cell.appendChild(U.el('div', 'xs-linebody', head));
+      if (row.quote) cell.appendChild(U.el('div', 'xs-linequote', row.quote));
+      return;
     }
 
     const v = valueOf(row, col);
     if (v) cell.appendChild(U.el('span', 'xs-val', v));
+  }
+
+  // 정방형 미리보기. 사진은 그대로, 움짤/영상은 재생 주소가 있으면 음소거 자동재생으로 보여주고
+  // 없으면(재생기 내부 임시 주소뿐이면) 첫 장면 이미지만 보여준다.
+  function appendMediaPreview(cell, row) {
+    const items = [];
+    (row.thumbs || []).forEach(function (src) { items.push({ type: 'img', src: src }); });
+    (row.clips || []).forEach(function (clip) {
+      if (clip.src) items.push({ type: 'video', src: clip.src, poster: clip.poster });
+      else if (clip.poster) items.push({ type: 'img', src: clip.poster });
+    });
+    if (!items.length) return;
+
+    const box = U.el('div', 'xs-mediaprev');
+    items.forEach(function (item) {
+      let el;
+      if (item.type === 'video') {
+        el = document.createElement('video');
+        el.className = 'xs-prevtile';
+        el.src = item.src;
+        if (item.poster) el.poster = item.poster;
+        el.muted = true;
+        el.loop = true;
+        el.autoplay = true;
+        el.playsInline = true;
+      } else {
+        el = U.el('img', 'xs-prevtile');
+        el.src = item.src;
+        el.loading = 'lazy';
+      }
+      box.appendChild(el);
+    });
+    cell.appendChild(box);
   }
 
   // 실행 메뉴로 실제 동작을 수행한 뒤, 그 행의 칸만 다시 그린다.

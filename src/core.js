@@ -4,6 +4,10 @@
 
   const XS = (window.__XSHEETS__ = window.__XSHEETS__ || {});
 
+  XS.version = (function () {
+    try { return chrome.runtime.getManifest().version; } catch (e) { return '0.0.0'; }
+  })();
+
   XS.DEFAULTS = {
     enabled: true,      // 시트 화면 사용 여부
     wrap: true,         // 자동 줄 바꿈
@@ -12,7 +16,8 @@
     autoLoad: true,     // 아래로 내리면 원본 타임라인을 자동으로 더 읽어옴
     rowLimit: 3000,     // 한 시트에 담아둘 최대 행 수
     batchSize: 40,      // 더 불러오기 한 번에 목표로 하는 새 글 개수
-    promoted: 'gray'    // show | gray | hide  (프로모션/광고 트윗 처리 방식)
+    promoted: 'gray',   // show | gray | hide  (프로모션/광고 트윗 처리 방식)
+    tweetMedia: 'hide'  // hide | small | preview  (게시물 속 사진·영상 표시 방식, 프로필 사진과는 별개)
   };
 
   XS.settings = Object.assign({}, XS.DEFAULTS);
@@ -23,11 +28,31 @@
     rows: [],
     index: new Map(),
     kind: '',           // timeline | notification
-    key: '',            // 현재 경로 (시트 구분용)
+    key: '',            // 현재 시트 열쇠 (경로, 홈이면 탭까지 포함)
+    caches: new Map(),  // key -> { rows, index, kind }  (엑셀의 시트 탭처럼 따로 보관)
 
+    // 다른 시트(예: 추천 <-> 팔로우 중)로 옮겨간다. 예전에 모아둔 내용이 있으면 그대로 이어서 쓴다.
+    switchTo(kind, key) {
+      if (this.key && this.key !== key) {
+        this.caches.set(this.key, { rows: this.rows, index: this.index, kind: this.kind });
+      }
+      const cached = this.caches.get(key);
+      if (cached) {
+        this.rows = cached.rows;
+        this.index = cached.index;
+      } else {
+        this.rows = [];
+        this.index = new Map();
+      }
+      this.kind = kind;
+      this.key = key;
+    },
+
+    // 이 시트만 완전히 지우고 새로 시작한다 ("새로 읽기" 버튼 등).
     reset(kind, key) {
-      this.rows.length = 0;
-      this.index.clear();
+      this.caches.delete(key);
+      this.rows = [];
+      this.index = new Map();
       this.kind = kind;
       this.key = key;
     },
