@@ -91,6 +91,15 @@
       bar.appendChild(b);
     });
 
+    const write = U.el('button', 'xs-menu xs-menu-primary', '글쓰기');
+    write.type = 'button';
+    write.addEventListener('click', function () {
+      UI.showNewPostComposer(function (text) {
+        return XS.actions.postText(text);
+      });
+    });
+    bar.appendChild(write);
+
     return bar;
   }
 
@@ -372,31 +381,36 @@
     updateLink.hidden = false;
   };
 
-  /* ---------- 인용 리트윗 작성창 ---------- */
+  /* ---------- 글 작성창 (새 글, 인용 리트윗 공용) ---------- */
 
-  const QUOTE_LIMIT = 280;
+  const POST_LIMIT = 280;
 
-  UI.showQuoteComposer = function (row, onSubmit) {
+  // opts.title: 작성창 제목. opts.quotedRow: 있으면 인용 리트윗 모드로, 없으면 새 글 모드로 뜬다.
+  UI.showComposer = function (opts, onSubmit) {
+    opts = opts || {};
     const overlay = U.el('div', 'xs-modal-overlay');
     const box = U.el('div', 'xs-modal');
 
-    box.appendChild(U.el('div', 'xs-modal-title', '인용 리트윗 작성'));
+    box.appendChild(U.el('div', 'xs-modal-title', opts.title || '글쓰기'));
 
-    const quoted = U.el('div', 'xs-modal-quoted');
-    quoted.appendChild(U.el('div', 'xs-modal-quoted-name', [row.name, row.handle].filter(Boolean).join(' ')));
-    quoted.appendChild(U.el('div', 'xs-modal-quoted-text', U.oneLine(row.text || '')));
-    box.appendChild(quoted);
+    if (opts.quotedRow) {
+      const row = opts.quotedRow;
+      const quoted = U.el('div', 'xs-modal-quoted');
+      quoted.appendChild(U.el('div', 'xs-modal-quoted-name', [row.name, row.handle].filter(Boolean).join(' ')));
+      quoted.appendChild(U.el('div', 'xs-modal-quoted-text', U.oneLine(row.text || '')));
+      box.appendChild(quoted);
+    }
 
     const textarea = document.createElement('textarea');
     textarea.className = 'xs-modal-textarea';
-    textarea.maxLength = QUOTE_LIMIT;
-    textarea.placeholder = '코멘트를 입력하세요';
+    textarea.maxLength = POST_LIMIT;
+    textarea.placeholder = opts.quotedRow ? '코멘트를 입력하세요' : '무슨 일이 있었나요?';
     box.appendChild(textarea);
 
-    const counter = U.el('div', 'xs-modal-counter', '0 / ' + QUOTE_LIMIT);
+    const counter = U.el('div', 'xs-modal-counter', '0 / ' + POST_LIMIT);
     box.appendChild(counter);
     textarea.addEventListener('input', function () {
-      counter.textContent = textarea.value.length + ' / ' + QUOTE_LIMIT;
+      counter.textContent = textarea.value.length + ' / ' + POST_LIMIT;
     });
 
     const actions = U.el('div', 'xs-modal-actions');
@@ -445,5 +459,13 @@
         }
       });
     });
+  };
+
+  UI.showQuoteComposer = function (row, onSubmit) {
+    UI.showComposer({ title: '인용 리트윗 작성', quotedRow: row }, onSubmit);
+  };
+
+  UI.showNewPostComposer = function (onSubmit) {
+    UI.showComposer({ title: '새 글 작성' }, onSubmit);
   };
 })();

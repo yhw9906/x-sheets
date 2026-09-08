@@ -54,6 +54,7 @@ window.chrome = {
     const isPromo = i === 2;      // 세 번째 글은 프로모션으로
     const isLocked = i === 5;     // 여섯 번째 글은 비공개 계정으로
     const hasVideo = i === 7;     // 여덟 번째 글은 영상으로
+    const hasQuote = i === 9;     // 열 번째 글은 인용 리트윗으로
     html += `
     <article data-testid="tweet">
       <div data-testid="Tweet-User-Avatar"><img src="https://picsum.photos/seed/av${i}/40"></div>
@@ -66,6 +67,13 @@ window.chrome = {
       <div data-testid="tweetText">${b}</div>
       ${i % 3 === 0 ? `<div data-testid="tweetPhoto"><img src="https://picsum.photos/seed/p${i}/300"></div>` : ''}
       ${hasVideo ? '<div data-testid="videoPlayer"><video src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4" poster="https://picsum.photos/seed/vid/300"></video></div>' : ''}
+      ${hasQuote ? `
+      <div class="quote-card">
+        <div data-testid="User-Name"><a role="link" href="/quoted${i}"><span>다른작성자</span></a></div>
+        <a href="/quoted${i}/status/${900000 + i}"><time datetime="2026-08-30T09:00:00.000Z">인용시간</time></a>
+        <div data-testid="tweetText">이건 인용된 원본 글의 내용입니다. 여기에도 사진이 붙어있어요.</div>
+        <div data-testid="tweetPhoto"><img src="https://picsum.photos/seed/quoted${i}/300"></div>
+      </div>` : ''}
       <div role="group">
         <button data-testid="reply"><span>${c[0]}</span></button>
         <button data-testid="retweet"><span>${c[1]}</span></button>

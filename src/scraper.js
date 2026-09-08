@@ -105,10 +105,17 @@
     return '';
   }
 
-  function mediaInfo(article) {
-    const photos = article.querySelectorAll('[data-testid="tweetPhoto"] img');
-    const players = article.querySelectorAll('[data-testid="videoPlayer"] video, video');
-    const hasCard = !!article.querySelector('[data-testid="card.wrapper"]');
+  // exclude를 주면 그 안에 있는 요소(인용 카드 내부 등)는 건너뛴다.
+  // 그래야 인용 리트윗에서 바깥 글의 미디어와 인용된 글의 미디어가 서로 안 섞인다.
+  function mediaInfo(scope, exclude) {
+    const inScope = function (list) {
+      const arr = Array.prototype.slice.call(list);
+      return exclude ? arr.filter(function (el) { return !exclude.contains(el); }) : arr;
+    };
+
+    const photos = inScope(scope.querySelectorAll('[data-testid="tweetPhoto"] img'));
+    const players = inScope(scope.querySelectorAll('[data-testid="videoPlayer"] video, video'));
+    const hasCard = !!scope.querySelector('[data-testid="card.wrapper"]');
 
     const thumbs = [];
     photos.forEach(function (img) {
@@ -164,15 +171,64 @@
   }
 
   // 비공개(잠금) 계정은 이름 옆에 자물쇠 아이콘이 붙는다.
+  // 바깥 글 작성자만 본다(첫 번째 User-Name). 인용 카드 안의 비공개 아이콘까지 잡으면
+  // 인용한 사람이 아니라 인용된 사람 계정 때문에 잘못 표시될 수 있다.
   function isProtected(article) {
-    if (article.querySelector('[data-testid="icon-lock"]')) return true;
     const nameBlock = article.querySelector('[data-testid="User-Name"]') || article;
+    if (nameBlock.querySelector('[data-testid="icon-lock"]')) return true;
     const svgs = nameBlock.querySelectorAll('svg[aria-label]');
     for (let i = 0; i < svgs.length; i++) {
       const label = svgs[i].getAttribute('aria-label') || '';
       if (/protected|비공개/i.test(label)) return true;
     }
     return false;
+  }
+
+  // 인용 리트윗이면 안에 작은 카드로 원본 글이 하나 더 들어있다. User-Name이 두 번째로
+  // 나오는 지점을 기준으로 그 카드의 테두리(시간이 들어있는 가장 가까운 조상)를 찾는다.
+  function findQuoteCard(article) {
+    const names = article.querySelectorAll('[data-testid="User-Name"]');
+    if (names.length < 2) return null;
+
+    const nameBlock = names[1];
+    let card = nameBlock.parentElement;
+    for (let i = 0; i < 6 && card && card !== article; i++) {
+      if (card.querySelector('time')) break;
+      card = card.parentElement;
+    }
+    if (!card || card === article) card = nameBlock.closest('div') || nameBlock;
+    return card;
+  }
+
+  function extractQuoted(article, card) {
+    const names = card.querySelectorAll('[data-testid="User-Name"]');
+    const nameBlock = names[0] || card;
+
+    const href = permalink(card);
+    const m = href && href.match(/^\/([^/]+)\/status\/(\d+)/);
+
+    const first = nameBlock.querySelector('a[role="link"] span');
+    const name = U.oneLine(U.text(first)) || U.oneLine(U.text(nameBlock).split('\n')[0]);
+
+    const timeEl = card.querySelector('time');
+    const iso = timeEl ? timeEl.getAttribute('datetime') : '';
+    const rel = U.oneLine(U.text(timeEl));
+
+    const textEl = card.querySelector('[data-testid="tweetText"]');
+    const text = textEl ? U.text(textEl) : '';
+
+    const media = mediaInfo(card);
+
+    return {
+      name: name,
+      handle: m ? '@' + m[1] : '',
+      tweetId: m ? m[2] : '',
+      text: text,
+      time: iso ? U.formatDate(iso) : rel,
+      thumbs: media.thumbs,
+      clips: media.clips,
+      url: href ? 'https://x.com' + href : ''
+    };
   }
 
   /* ---------- 게시물 한 건 ---------- */
@@ -194,14 +250,16 @@
 
     const texts = article.querySelectorAll('[data-testid="tweetText"]');
     const body = texts.length ? U.text(texts[0]) : '';
-    const quote = texts.length > 1 ? U.text(texts[1]) : '';
+
+    const quoteCard = findQuoteCard(article);
+    const quoted = quoteCard ? extractQuoted(article, quoteCard) : null;
 
     const timeEl = article.querySelector('time');
     const iso = timeEl ? timeEl.getAttribute('datetime') : '';
     const rel = U.oneLine(U.text(timeEl));
 
     const social = article.querySelector('[data-testid="socialContext"]');
-    const media = mediaInfo(article);
+    const media = mediaInfo(article, quoteCard);
     const state = actionState(article);
 
     return {
@@ -211,7 +269,7 @@
       name: name,
       handle: handle,
       text: body,
-      quote: quote,
+      quoted: quoted,
       context: U.oneLine(U.text(social)),
       iso: iso,
       time: iso ? U.formatDate(iso) : rel,
@@ -317,7 +375,7 @@
           name: t.name,
           actors: t.name + ' ' + t.handle,
           text: t.text,
-          quote: t.quote,
+          quoted: t.quoted,
           iso: t.iso,
           time: t.time,
           rel: t.rel,

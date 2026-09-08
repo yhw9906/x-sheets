@@ -18,7 +18,12 @@ function tweet(i, opts) {
     ? '<svg aria-label="비공개 계정"></svg>'
     : '';
   const quoteBlock = opts.quote
-    ? `<div data-testid="tweetText">${opts.quote}</div>`
+    ? `<div class="quote-card">
+        <div data-testid="User-Name"><a role="link" href="/quoteduser${i}"><span>인용대상 ${i}</span></a></div>
+        <a href="/quoteduser${i}/status/${5000 + i}"><time datetime="2026-09-0${(i % 8) + 1}T10:00:00.000Z">인용시간</time></a>
+        <div data-testid="tweetText">${opts.quote}</div>
+        ${opts.quotePhoto ? `<div data-testid="tweetPhoto"><img src="${opts.quotePhoto}"></div>` : ''}
+      </div>`
     : '';
   const videoBlock = opts.video
     ? `<div data-testid="videoPlayer"><video src="${opts.video.src || ''}" poster="${opts.video.poster || ''}"></video></div>`
@@ -124,7 +129,7 @@ setTimeout(async () => {
   const root = doc.getElementById('x-sheets-root');
   check('시트 화면이 붙었다', !!root);
   check('제목이 홈', root && root.querySelector('.xs-docname').textContent === '홈');
-  check('메뉴 6개', root && root.querySelectorAll('.xs-menu').length === 6);
+  check('메뉴 7개(글쓰기 포함)', root && root.querySelectorAll('.xs-menu').length === 7);
   const heads = root ? root.querySelectorAll('.xs-colhead') : [];
   check('열 머리글 19개', heads.length === 19, '실제 ' + heads.length);
   check('A열이 작성자', heads[0] && heads[0].textContent.includes('A') && heads[0].textContent.includes('작성자'));
@@ -349,20 +354,39 @@ setTimeout(async () => {
   check('고정 대기 없이 빠르게 끝났다', elapsed < 5000, elapsed + 'ms');
 
   console.log('\n[15] 인용 트윗 표시');
+  XS.saveSettings({ tweetMedia: 'small' });
   doc.getElementById('react-root').insertAdjacentHTML('beforeend',
-    tweet(950, { quote: '이건 인용된 원본 트윗입니다.' }));
+    tweet(950, { quote: '이건 인용된 원본 트윗입니다.', quotePhoto: 'https://pbs.example/quoted950.jpg' }));
   XS.scraper.collect();
   XS.grid.rebuild();
 
   const qRow = XS.store.rows.find(function (r) { return r.tweetId === '1950'; });
-  check('인용문 필드가 저장된다', !!qRow && qRow.quote === '이건 인용된 원본 트윗입니다.');
+  check('인용된 글의 본문이 저장된다', !!qRow && !!qRow.quoted && qRow.quoted.text === '이건 인용된 원본 트윗입니다.');
+  check('인용된 글의 작성자가 저장된다', !!qRow && qRow.quoted.name === '인용대상 950');
+  check('인용된 글의 계정이 저장된다', !!qRow && qRow.quoted.handle === '@quoteduser950');
+  check('인용된 글의 링크가 저장된다', !!qRow && qRow.quoted.url === 'https://x.com/quoteduser950/status/5950');
+  check('인용된 글의 미디어가 저장된다', !!qRow && qRow.quoted.thumbs.length === 1 &&
+    qRow.quoted.thumbs[0] === 'https://pbs.example/quoted950.jpg');
+  check('바깥 글 자신의 미디어와는 안 섞인다', qRow.thumbs.length === 1 &&
+    qRow.thumbs[0] === 'https://pbs.example/p950.jpg');
 
   const qIdx = XS.grid.view.indexOf(qRow);
   const textColIdx = XS.grid.cols.findIndex(function (c) { return c.key === 'text'; });
   const qCell = qIdx !== -1 ? XS.grid.cellEls[qIdx][textColIdx] : null;
   check('본문 줄이 따로 있다', !!qCell && !!qCell.querySelector('.xs-linebody'));
-  check('인용문이 별도 줄로 표시된다', !!qCell && !!qCell.querySelector('.xs-linequote'));
-  check('인용문 내용이 일치한다', !!qCell && qCell.querySelector('.xs-linequote').textContent === '이건 인용된 원본 트윗입니다.');
+  check('인용 영역이 별도로 표시된다', !!qCell && !!qCell.querySelector('.xs-linequote'));
+  check('인용한 사람 정보가 표시된다', !!qCell &&
+    qCell.querySelector('.xs-quotemeta').textContent.includes('인용대상 950') &&
+    qCell.querySelector('.xs-quotemeta').textContent.includes('@quoteduser950'));
+  check('인용문 내용이 일치한다', !!qCell &&
+    qCell.querySelector('.xs-quotebody').textContent === '이건 인용된 원본 트윗입니다.');
+  check('인용 안의 이미지도 보인다', !!qCell && !!qCell.querySelector('.xs-quotemedia img.xs-prevtile'));
+
+  XS.saveSettings({ tweetMedia: 'hide' });
+  XS.grid.rebuild();
+  const qCellHidden = XS.grid.cellEls[XS.grid.view.indexOf(qRow)][textColIdx];
+  check('미디어 숨김 설정이면 인용 안 이미지도 숨겨진다', !qCellHidden.querySelector('.xs-quotemedia'));
+  check('인용문 자체는 미디어 설정과 무관하게 계속 보인다', !!qCellHidden.querySelector('.xs-quotebody'));
 
   console.log('\n[16] 추천/팔로우 중 시트 탭');
   const tablist = doc.createElement('div');
@@ -502,6 +526,50 @@ setTimeout(async () => {
   check('프로필 사진 설정은 게시물 미디어와 독립적으로 작동한다',
     !!XS.grid.cellEls[vIdx2][nameColIdx].querySelector('img.xs-thumb'));
   XS.saveSettings({ media: 'hide' });
+
+  console.log('\n[20] 새 글 작성');
+  check('메뉴에 글쓰기 버튼이 있다', Array.prototype.some.call(
+    root.querySelectorAll('.xs-menu'), function (b) { return b.textContent === '글쓰기'; }));
+
+  const sideBtn = doc.createElement('div');
+  sideBtn.setAttribute('data-testid', 'SideNav_NewTweet_Button');
+  let sideBtnClicked = false;
+  sideBtn.addEventListener('click', function () {
+    sideBtnClicked = true;
+    const dialog = doc.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const editBox = doc.createElement('div');
+    editBox.setAttribute('data-testid', 'tweetTextarea_0');
+    editBox.contentEditable = 'true';
+    editBox.tabIndex = 0;
+    dialog.appendChild(editBox);
+    const postBtn = doc.createElement('button');
+    postBtn.setAttribute('data-testid', 'tweetButton');
+    postBtn.addEventListener('click', function () {
+      window.__newPost = editBox.textContent;
+      dialog.remove();
+    });
+    dialog.appendChild(postBtn);
+    doc.body.appendChild(dialog);
+  });
+  doc.body.appendChild(sideBtn);
+
+  XS.ui.showNewPostComposer(function (text) {
+    return XS.actions.postText(text);
+  });
+  check('작성창에 인용 요약이 없다(새 글 모드)', !root.querySelector('.xs-modal-quoted'));
+  check('안내 문구가 새 글에 맞게 뜬다', root.querySelector('.xs-modal-textarea').placeholder === '무슨 일이 있었나요?');
+
+  const postTa = root.querySelector('.xs-modal-textarea');
+  postTa.value = '오늘의 기록입니다';
+  postTa.dispatchEvent(new window.Event('input', { bubbles: true }));
+  root.querySelector('.xs-modal-actions .xs-btn-primary').click();
+  await XS.util.wait(500);
+
+  check('사이드바 글쓰기 버튼을 대신 눌러준다', sideBtnClicked === true);
+  check('실제 작성창에 글이 들어간다', window.__newPost === '오늘의 기록입니다');
+  check('게시 완료 알림', root.querySelector('.xs-statusright').textContent.includes('게시했습니다'));
+  check('작성창이 닫힌다', !root.querySelector('.xs-modal-overlay'));
 
   console.log('\n결과: ' + (fails.length === 0 ? '모두 통과' : fails.length + '건 실패 -> ' + fails.join(', ')));
   process.exit(fails.length ? 1 : 0);

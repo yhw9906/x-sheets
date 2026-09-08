@@ -48,11 +48,22 @@
 
   /* ---------- 값 ---------- */
 
+  function quotedToText(q) {
+    const who = [q.name, q.handle].filter(Boolean).join(' ');
+    const head = [who, q.time].filter(Boolean).join(' · ');
+    return [head, q.text].filter(Boolean).join('\n');
+  }
+
   function valueOf(row, col) {
     if (col.key === 'text') {
       let v = row.text || '';
       if (row.context) v = row.context + '\n' + v;
-      if (row.quote) v = v + '\n' + row.quote;
+      if (row.quoted) {
+        const q = quotedToText(row.quoted);
+        if (q) v = v + '\n' + q;
+      } else if (row.quote) {
+        v = v + '\n' + row.quote;
+      }
       return v;
     }
     if (col.key === 'state') {
@@ -329,12 +340,30 @@
       }
     }
 
-    // 내용 칸은 인용한 원본 글을 옅은 회색 줄로 따로 구분해서 보여준다.
+    // 내용 칸은 인용한 원본 글을 옅은 회색 영역으로 따로 구분해서 보여준다.
     if (col.key === 'text') {
       let head = row.text || '';
       if (row.context) head = row.context + '\n' + head;
       if (head) cell.appendChild(U.el('div', 'xs-linebody', head));
-      if (row.quote) cell.appendChild(U.el('div', 'xs-linequote', row.quote));
+
+      if (row.quoted) {
+        const q = row.quoted;
+        const box = U.el('div', 'xs-linequote');
+
+        const who = [q.name, q.handle].filter(Boolean).join(' ');
+        const meta = [who, q.time].filter(Boolean).join(' · ');
+        if (meta) box.appendChild(U.el('div', 'xs-quotemeta', meta));
+        if (q.text) box.appendChild(U.el('div', 'xs-quotebody', q.text));
+
+        if (XS.settings.tweetMedia !== 'hide') {
+          const mediaBox = buildMediaPreview(q);
+          if (mediaBox) { mediaBox.classList.add('xs-quotemedia'); box.appendChild(mediaBox); }
+        }
+
+        cell.appendChild(box);
+      } else if (row.quote) {
+        cell.appendChild(U.el('div', 'xs-linequote', row.quote));
+      }
       return;
     }
 
@@ -343,15 +372,15 @@
   }
 
   // 정방형 미리보기. 사진은 그대로, 움짤/영상은 재생 주소가 있으면 음소거 자동재생으로 보여주고
-  // 없으면(재생기 내부 임시 주소뿐이면) 첫 장면 이미지만 보여준다.
-  function appendMediaPreview(cell, row) {
+  // 없으면(재생기 내부 임시 주소뿐이면) 첫 장면 이미지만 보여준다. 상자가 없으면 null.
+  function buildMediaPreview(row) {
     const items = [];
     (row.thumbs || []).forEach(function (src) { items.push({ type: 'img', src: src }); });
     (row.clips || []).forEach(function (clip) {
       if (clip.src) items.push({ type: 'video', src: clip.src, poster: clip.poster });
       else if (clip.poster) items.push({ type: 'img', src: clip.poster });
     });
-    if (!items.length) return;
+    if (!items.length) return null;
 
     const box = U.el('div', 'xs-mediaprev');
     items.forEach(function (item) {
@@ -372,7 +401,12 @@
       }
       box.appendChild(el);
     });
-    cell.appendChild(box);
+    return box;
+  }
+
+  function appendMediaPreview(cell, row) {
+    const box = buildMediaPreview(row);
+    if (box) cell.appendChild(box);
   }
 
   // 실행 메뉴로 실제 동작을 수행한 뒤, 그 행의 칸만 다시 그린다.

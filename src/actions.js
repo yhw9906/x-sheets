@@ -74,6 +74,32 @@
     document.execCommand('insertText', false, text);
   }
 
+  // 인용 작성창이든 새 글 작성창이든, 뜬 뒤부터는 같은 방식으로 글을 넣고 게시 버튼을 누른다.
+  function driveComposer(text) {
+    return waitForSelector('[data-testid="tweetTextarea_0"]', 2000).then(function (box) {
+      if (!box) {
+        XS.ui.flash('작성창을 찾지 못했습니다. 원본에서 직접 완료해 주세요');
+        return false;
+      }
+
+      insertComposerText(box, text);
+
+      return new Promise(function (resolve) {
+        setTimeout(function () {
+          const dialog = box.closest('[role="dialog"]') || document;
+          const postBtn = dialog.querySelector('[data-testid="tweetButton"]');
+          if (!postBtn || postBtn.disabled || postBtn.getAttribute('aria-disabled') === 'true') {
+            XS.ui.flash('게시 버튼을 찾지 못했습니다. 작성창에서 직접 게시해 주세요');
+            resolve(false);
+            return;
+          }
+          postBtn.click();
+          resolve(true);
+        }, 200);
+      });
+    });
+  }
+
   function findArticle(row) {
     return S.findArticleById(row.tweetId || row.id);
   }
@@ -172,30 +198,33 @@
       if (!item) { closeMenu(); XS.ui.flash('인용 메뉴를 찾지 못했습니다'); return false; }
       item.click();
 
-      return waitForSelector('[data-testid="tweetTextarea_0"]', 2000).then(function (box) {
-        if (!box) {
-          XS.ui.flash('작성창을 찾지 못했습니다. 원본에서 직접 완료해 주세요');
-          return false;
+      return driveComposer(text).then(function (ok) {
+        if (ok) {
+          XS.ui.flash('인용 리트윗을 게시했습니다');
+          setTimeout(function () { refreshRowState(row); }, 600);
         }
-
-        insertComposerText(box, text);
-
-        return new Promise(function (resolve) {
-          setTimeout(function () {
-            const dialog = box.closest('[role="dialog"]') || document;
-            const postBtn = dialog.querySelector('[data-testid="tweetButton"]');
-            if (!postBtn || postBtn.disabled || postBtn.getAttribute('aria-disabled') === 'true') {
-              XS.ui.flash('게시 버튼을 찾지 못했습니다. 작성창에서 직접 게시해 주세요');
-              resolve(false);
-              return;
-            }
-            postBtn.click();
-            XS.ui.flash('인용 리트윗을 게시했습니다');
-            setTimeout(function () { refreshRowState(row); }, 600);
-            resolve(true);
-          }, 200);
-        });
+        return ok;
       });
+    });
+  };
+
+  /* ---------- 새 글 작성 ---------- */
+
+  // 시트 안 작성창에서 쓴 글을 받아서, 원본 페이지의 글쓰기 버튼을 누르고
+  // 대신 입력한 뒤 게시 버튼까지 눌러준다. 성공하면 true를 준다.
+  A.postText = function (text) {
+    const trigger = document.querySelector('[data-testid="SideNav_NewTweet_Button"]');
+    if (!trigger) {
+      // 글쓰기 버튼을 못 찾으면(사이드바가 없는 화면이거나 구조가 바뀌었으면) 작성 화면으로 바로 이동한다.
+      location.href = 'https://x.com/compose/post';
+      return Promise.resolve(false);
+    }
+
+    trigger.click();
+
+    return driveComposer(text).then(function (ok) {
+      if (ok) XS.ui.flash('게시했습니다');
+      return ok;
     });
   };
 })();
